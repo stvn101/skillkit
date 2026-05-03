@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Cli, Builtins } from 'clipanion';
+import { setVersion, setAgentCount } from '@skillkit/cli';
+import { getAdapterCount } from '@skillkit/agents';
 import {
   InstallCommand,
   SyncCommand,
@@ -122,6 +124,9 @@ import {
   TimelineCommand,
   SessionHandoffCommand,
   LineageCommand,
+  TapAddCommand,
+  TapRemoveCommand,
+  TapListCommand,
 } from '@skillkit/cli';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -129,6 +134,9 @@ const __dirname = dirname(__filename);
 const packageJsonPath = join(__dirname, '../package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const version = packageJson.version || '1.2.0';
+
+setVersion(version);
+setAgentCount(getAdapterCount());
 
 const cli = new Cli({
   binaryLabel: 'skillkit',
@@ -271,5 +279,9 @@ cli.register(IssueListCommand);
 cli.register(TimelineCommand);
 cli.register(SessionHandoffCommand);
 cli.register(LineageCommand);
+
+cli.register(TapAddCommand);
+cli.register(TapRemoveCommand);
+cli.register(TapListCommand);
 
 cli.runExit(process.argv.slice(2));

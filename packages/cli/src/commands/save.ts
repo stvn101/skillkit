@@ -1,11 +1,10 @@
 import { cpSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import chalk from 'chalk';
+import { colors, warn, spinner } from '../onboarding/index.js';
 import { Command, Option } from 'clipanion';
 import { ContentExtractor, SkillGenerator, AutoTagger } from '@skillkit/core';
 import type { AgentType } from '@skillkit/core';
 import { getAdapter } from '@skillkit/agents';
-import { spinner } from '../onboarding/index.js';
 
 export class SaveCommand extends Command {
   static override paths = [['save']];
@@ -44,14 +43,26 @@ export class SaveCommand extends Command {
     description: 'Local file path to save as a skill',
   });
 
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
+
   async execute(): Promise<number> {
     const sources = [this.url, this.text, this.file].filter(Boolean);
     if (sources.length === 0) {
-      console.log(chalk.red('Provide a URL, --text, or --file'));
+      if (this.json) {
+        console.log(JSON.stringify({ success: false, error: 'Provide a URL, --text, or --file' }));
+      } else {
+        console.log(colors.error('Provide a URL, --text, or --file'));
+      }
       return 1;
     }
     if (sources.length > 1) {
-      console.log(chalk.red('Provide only one of: URL, --text, or --file'));
+      if (this.json) {
+        console.log(JSON.stringify({ success: false, error: 'Provide only one of: URL, --text, or --file' }));
+      } else {
+        console.log(colors.error('Provide only one of: URL, --text, or --file'));
+      }
       return 1;
     }
 
@@ -59,7 +70,7 @@ export class SaveCommand extends Command {
     const generator = new SkillGenerator();
     const tagger = new AutoTagger();
 
-    const s = spinner();
+    const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
 
     try {
       s.start('Extracting content');
@@ -83,15 +94,9 @@ export class SaveCommand extends Command {
         global: this.global,
       });
 
-      s.stop(chalk.green('Skill saved'));
+      s.stop('Skill saved');
 
-      console.log('');
-      console.log(chalk.bold('  Name:  ') + chalk.cyan(result.name));
-      console.log(chalk.bold('  Path:  ') + chalk.dim(result.skillPath));
-      if (tags.length > 0) {
-        console.log(chalk.bold('  Tags:  ') + tags.map(t => chalk.yellow(t)).join(', '));
-      }
-
+      const installedAgents: string[] = [];
       if (this.agent) {
         const agents = this.agent.split(',').map(a => a.trim()).filter(Boolean);
         const skillDir = dirname(result.skillPath);
@@ -102,18 +107,35 @@ export class SaveCommand extends Command {
             const targetDir = join(adapter.skillsDir, result.name);
             mkdirSync(targetDir, { recursive: true });
             cpSync(skillDir, targetDir, { recursive: true });
-            console.log(chalk.green(`  Installed to ${agentName}: `) + chalk.dim(targetDir));
+            installedAgents.push(agentName);
+            if (!this.json) {
+              console.log(colors.success(`  Installed to ${agentName}: `) + colors.muted(targetDir));
+            }
           } catch (err) {
-            console.log(chalk.yellow(`  Skipped ${agentName}: ${err instanceof Error ? err.message : String(err)}`));
+            if (!this.json) warn(`  Skipped ${agentName}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       }
 
-      console.log('');
+      if (this.json) {
+        console.log(JSON.stringify({ success: true, name: result.name, path: result.skillPath, agents: installedAgents }));
+      } else {
+        console.log('');
+        console.log(colors.bold('  Name:  ') + colors.cyan(result.name));
+        console.log(colors.bold('  Path:  ') + colors.muted(result.skillPath));
+        if (tags.length > 0) {
+          console.log(colors.bold('  Tags:  ') + tags.map(t => colors.warning(t)).join(', '));
+        }
+        console.log('');
+      }
       return 0;
     } catch (err) {
-      s.stop(chalk.red('Failed'));
-      console.log(chalk.red(err instanceof Error ? err.message : String(err)));
+      s.stop('Failed');
+      if (this.json) {
+        console.log(JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }));
+      } else {
+        console.log(colors.error(err instanceof Error ? err.message : String(err)));
+      }
       return 1;
     }
   }

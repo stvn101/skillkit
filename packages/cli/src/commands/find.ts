@@ -13,7 +13,7 @@ import {
   GitHubSkillRegistry,
   SkillsShRegistry,
 } from "@skillkit/core";
-import { formatCount } from "../helpers.js";
+import { formatCount, loadTaps } from "../helpers.js";
 
 interface SkillResult {
   name: string;
@@ -60,15 +60,20 @@ export class FindCommand extends Command {
     description: "Minimal output (just list skills)",
   });
 
-  federated = Option.Boolean("--federated,-f", false, {
-    description: "Search external registries (GitHub SKILL.md files)",
+  federated = Option.Boolean("--federated,-f", true, {
+    description: "Search external registries (enabled by default)",
+    hidden: true,
+  });
+
+  json = Option.Boolean("--json", false, {
+    description: "Output as JSON",
   });
 
   async execute(): Promise<number> {
-    const s = spinner();
+    const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
     const limit = parseInt(this.limit, 10) || 10;
 
-    if (!this.quiet) {
+    if (!this.quiet && !this.json) {
       header("Find Skills");
     }
 
@@ -86,6 +91,20 @@ export class FindCommand extends Command {
       }),
     );
 
+    const taps = loadTaps();
+    for (const tap of taps.taps) {
+      const tapLabel = tap.name || tap.source;
+      const exists = allSkills.some((s) => s.source === tap.source);
+      if (!exists) {
+        allSkills.push({
+          name: tapLabel,
+          description: `Custom tap: ${tap.source}`,
+          source: tap.source,
+          repoName: tap.source.split("/").pop() || "",
+        });
+      }
+    }
+
     let results: SkillResult[];
     let searchTerm: string | undefined;
 
@@ -102,7 +121,7 @@ export class FindCommand extends Command {
         )
         .slice(0, limit);
 
-      if (!this.quiet) {
+      if (!this.quiet && !this.json) {
         step("Showing featured skills");
       }
     } else if (this.query) {
@@ -123,7 +142,7 @@ export class FindCommand extends Command {
 
       s.stop(`Found ${results.length} skill(s)`);
     } else {
-      if (!this.quiet) {
+      if (!this.quiet && !this.json) {
         step("Enter a search term or browse featured skills");
       }
 
@@ -237,6 +256,18 @@ export class FindCommand extends Command {
       }
     }
 
+    if (this.json) {
+      console.log(JSON.stringify({
+        results: results.map((r) => ({
+          name: r.name,
+          description: r.description || "",
+          source: r.source,
+        })),
+        total: results.length,
+      }));
+      return 0;
+    }
+
     if (results.length === 0) {
       console.log(colors.muted("No skills found matching your search"));
       console.log("");
@@ -246,7 +277,7 @@ export class FindCommand extends Command {
       );
       console.log(
         colors.muted(
-          "  skillkit find -f <query>  # Also search GitHub SKILL.md files",
+          "  skillkit find <query>  # Search marketplace + GitHub",
         ),
       );
       console.log(colors.muted("  skillkit ui               # Browse in TUI"));

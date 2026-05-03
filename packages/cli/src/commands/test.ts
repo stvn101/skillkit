@@ -1,7 +1,7 @@
 import { Command, Option } from 'clipanion';
 import { resolve, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import chalk from 'chalk';
+import { colors, warn, success, error, step, spinner } from '../onboarding/index.js';
 import {
   runTestSuite,
   createTestSuiteFromFrontmatter,
@@ -85,8 +85,8 @@ export class TestCommand extends Command {
 
     if (skillFiles.length === 0) {
       if (!this.json) {
-        console.log(chalk.yellow('No skills found with tests.'));
-        console.log(chalk.dim('Add tests to your skills using YAML frontmatter.'));
+        warn('No skills found with tests.');
+        console.log(colors.muted('Add tests to your skills using YAML frontmatter.'));
       } else {
         console.log(JSON.stringify({ results: [], passed: true, total: 0 }));
       }
@@ -100,21 +100,21 @@ export class TestCommand extends Command {
 
     if (filesToTest.length === 0) {
       if (!this.json) {
-        console.log(chalk.yellow(`No skills found matching "${this.skill}"`));
+        warn(`No skills found matching "${this.skill}"`);
       }
       return 1;
     }
 
+    const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
+
     if (!this.json) {
-      console.log(chalk.bold('Running skill tests...\n'));
+      console.log(colors.bold('Running skill tests...\n'));
     }
 
-    // Parse tags
     const tags = this.tags?.split(',').map((t) => t.trim());
     const skipTags = this.skipTags?.split(',').map((t) => t.trim());
     const timeout = this.timeout ? parseInt(this.timeout, 10) : undefined;
 
-    // Run tests for each skill
     const results: TestSuiteResult[] = [];
     let allPassed = true;
 
@@ -126,8 +126,9 @@ export class TestCommand extends Command {
       }
 
       if (!this.json) {
-        console.log(chalk.blue(`Testing: ${suite.skillName}`));
+        step(`Testing: ${suite.skillName}`);
       }
+      s.start(`Running ${suite.skillName}`);
 
       const result = await runTestSuite(suite, {
         cwd: targetPath,
@@ -141,27 +142,28 @@ export class TestCommand extends Command {
 
           switch (event.type) {
             case 'test_start':
-              console.log(chalk.dim(`  Running: ${event.testName}`));
+              console.log(colors.muted(`  Running: ${event.testName}`));
               break;
             case 'test_end':
               if (event.passed) {
-                console.log(chalk.green(`  ✓ ${event.testName}`));
+                console.log(colors.success(`  ✓ ${event.testName}`));
               } else {
-                console.log(chalk.red(`  ✗ ${event.testName}`));
+                console.log(colors.error(`  ✗ ${event.testName}`));
                 if (event.error) {
-                  console.log(chalk.red(`    ${event.error}`));
+                  console.log(colors.error(`    ${event.error}`));
                 }
               }
               break;
             case 'assertion_end':
               if (this.verbose && !event.passed) {
-                console.log(chalk.red(`    - ${event.assertionType}: ${event.error}`));
+                console.log(colors.error(`    - ${event.assertionType}: ${event.error}`));
               }
               break;
           }
         },
       });
 
+      s.stop(`Completed ${suite.skillName}`);
       results.push(result);
 
       if (!result.passed) {
@@ -169,7 +171,7 @@ export class TestCommand extends Command {
       }
 
       if (!this.json) {
-        const icon = result.passed ? chalk.green('✓') : chalk.red('✗');
+        const icon = result.passed ? colors.success('✓') : colors.error('✗');
         const status = result.passed ? 'PASSED' : 'FAILED';
         console.log(
           `${icon} ${suite.skillName}: ${result.passedCount}/${result.tests.length} tests ${status} (${result.duration}ms)\n`
@@ -203,21 +205,21 @@ export class TestCommand extends Command {
       const failedTests = results.reduce((acc, r) => acc + r.failedCount, 0);
       const skippedTests = results.reduce((acc, r) => acc + r.skippedCount, 0);
 
-      console.log(chalk.bold('Summary:'));
+      console.log(colors.bold('Summary:'));
       console.log(`  Skills tested: ${results.length}`);
       console.log(`  Total tests: ${totalTests}`);
-      console.log(chalk.green(`  Passed: ${passedTests}`));
+      console.log(colors.success(`  Passed: ${passedTests}`));
       if (failedTests > 0) {
-        console.log(chalk.red(`  Failed: ${failedTests}`));
+        console.log(colors.error(`  Failed: ${failedTests}`));
       }
       if (skippedTests > 0) {
-        console.log(chalk.yellow(`  Skipped: ${skippedTests}`));
+        console.log(colors.warning(`  Skipped: ${skippedTests}`));
       }
 
       if (allPassed) {
-        console.log(chalk.green('\n✓ All tests passed!'));
+        success('\n✓ All tests passed!');
       } else {
-        console.log(chalk.red('\n✗ Some tests failed.'));
+        error('\n✗ Some tests failed.');
       }
     }
 

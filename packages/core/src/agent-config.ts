@@ -15,6 +15,8 @@ export interface AgentDirectoryConfig {
   skillsDir: string;
   /** Config file that references skills */
   configFile: string;
+  /** Alternative config files that also mark this agent as present */
+  altConfigFiles?: string[];
   /** Alternative skills directories */
   altSkillsDirs?: string[];
   /** Global skills directory */
@@ -111,13 +113,27 @@ export const AGENT_CONFIG: Record<AgentType, AgentDirectoryConfig> = {
     supportsAutoDiscovery: true,
   },
 
-  // Clawdbot
   clawdbot: {
     skillsDir: '.clawdbot/skills',
     configFile: 'AGENTS.md',
-    altSkillsDirs: ['skills'],
+    altSkillsDirs: ['skills', '~/.clawdbot/skills'],
     configFormat: 'xml',
     usesFrontmatter: true,
+    supportsAutoDiscovery: true,
+  },
+
+  openclaw: {
+    skillsDir: '.openclaw/skills',
+    configFile: 'AGENTS.md',
+    altConfigFiles: ['openclaw.json'],
+    altSkillsDirs: ['skills', '~/.openclaw/workspace/skills'],
+    globalSkillsDir: '~/.openclaw/workspace/skills',
+    configFormat: 'xml',
+    usesFrontmatter: true,
+    frontmatterFields: [
+      'name', 'description', 'version', 'scan_exempt',
+      'permissions', 'triggers', 'metadata',
+    ],
     supportsAutoDiscovery: true,
   },
 
@@ -458,6 +474,16 @@ export const AGENT_CONFIG: Record<AgentType, AgentDirectoryConfig> = {
     skillsDir: '.playcode/skills',
     configFile: 'AGENTS.md',
     configFormat: 'markdown',
+    usesFrontmatter: true,
+    supportsAutoDiscovery: true,
+  },
+
+  // Hermes Agent
+  hermes: {
+    skillsDir: '.hermes/skills',
+    configFile: 'AGENTS.md',
+    globalSkillsDir: '~/.hermes/skills',
+    configFormat: 'xml',
     usesFrontmatter: true,
     supportsAutoDiscovery: true,
   },

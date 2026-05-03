@@ -10,9 +10,9 @@ const config = AGENT_CONFIG.clawdbot;
 
 export class ClawdbotAdapter implements AgentAdapter {
   readonly type: AgentType = 'clawdbot';
-  readonly name = 'Clawdbot';
-  readonly skillsDir = config.skillsDir;
-  readonly configFile = config.configFile;
+  readonly name: string = 'Clawdbot';
+  readonly skillsDir: string = config.skillsDir;
+  readonly configFile: string = config.configFile;
 
   generateConfig(skills: Skill[]): string {
     const enabledSkills = skills.filter(s => s.enabled);
@@ -69,10 +69,9 @@ ${skillsXml}
   }
 
   async isDetected(): Promise<boolean> {
-    const projectSkills = join(process.cwd(), 'skills');
     const globalClawdbot = join(homedir(), '.clawdbot');
     const clawdbotConfig = join(process.cwd(), 'clawdbot.json');
 
-    return existsSync(projectSkills) || existsSync(globalClawdbot) || existsSync(clawdbotConfig);
+    return existsSync(globalClawdbot) || existsSync(clawdbotConfig);
   }
 }

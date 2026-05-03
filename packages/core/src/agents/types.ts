@@ -227,6 +227,7 @@ export const AGENT_DISCOVERY_PATHS: Record<AgentType, string[]> = {
   'antigravity': ['.antigravity/agents'],
   'amp': ['.amp/agents'],
   'clawdbot': ['.clawdbot/agents', 'agents'],
+  'openclaw': ['agents', '.openclaw/agents'],
   'droid': ['.droid/agents'],
   'github-copilot': ['.github/agents', '.github/instructions', '.github/custom-agents'],
   'goose': ['.goose/agents'],
@@ -263,6 +264,7 @@ export const AGENT_DISCOVERY_PATHS: Record<AgentType, string[]> = {
   'tabnine': ['.tabnine/agents'],
   'codegpt': ['.codegpt/agents'],
   'playcode-agent': ['.playcode/agents'],
+  'hermes': ['.hermes/agents'],
 };
 
 /**
@@ -277,6 +279,7 @@ export const ALL_AGENT_DISCOVERY_PATHS = [
   '.cline/agents',
   '.clawdbot/agents',
   '.codebuddy/agents',
+  '.openclaw/agents',
   '.codex/agents',
   '.commandcode/agents',
   '.continue/agents',
@@ -322,6 +325,7 @@ export const ALL_AGENT_DISCOVERY_PATHS = [
   '.tabnine/agents',
   '.codegpt/agents',
   '.playcode/agents',
+  '.hermes/agents',
 ];
 
 /**
@@ -336,6 +340,7 @@ export const CUSTOM_AGENT_FORMAT_MAP: Record<AgentType, AgentFormatCategory> = {
   'antigravity': 'claude-agent',
   'amp': 'claude-agent',
   'clawdbot': 'claude-agent',
+  'openclaw': 'claude-agent',
   'droid': 'claude-agent',
   'github-copilot': 'universal',
   'goose': 'claude-agent',
@@ -372,4 +377,5 @@ export const CUSTOM_AGENT_FORMAT_MAP: Record<AgentType, AgentFormatCategory> = {
   'tabnine': 'universal',
   'codegpt': 'universal',
   'playcode-agent': 'universal',
+  'hermes': 'claude-agent',
 };

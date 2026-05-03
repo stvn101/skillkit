@@ -53,16 +53,20 @@ export class SyncCommand extends Command {
     description: 'Minimal output',
   });
 
-  async execute(): Promise<number> {
-    const isInteractive = process.stdin.isTTY && !this.yes;
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
 
-    if (!this.quiet) {
+  async execute(): Promise<number> {
+    const isInteractive = process.stdin.isTTY && !this.yes && !this.json;
+
+    if (!this.quiet && !this.json) {
       header('Sync Skills');
     }
 
     try {
       let agentType: AgentType;
-      const s = spinner();
+      const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
 
       if (this.agent) {
         agentType = this.agent as AgentType;
@@ -91,8 +95,9 @@ export class SyncCommand extends Command {
 
         agentType = agentResult as AgentType;
       } else {
-        // Non-interactive: always detect, don't rely on default config
+        s.start('Detecting agent...');
         agentType = await detectAgent();
+        s.stop(`Detected: ${formatAgent(agentType)}`);
       }
 
       const adapter = getAdapter(agentType);
@@ -106,13 +111,16 @@ export class SyncCommand extends Command {
       }
 
       if (skills.length === 0) {
-        warn('No skills found to sync');
-        console.log(colors.muted('Install skills with: skillkit install <source>'));
+        if (this.json) {
+          console.log(JSON.stringify({ success: true, skills: 0, agent: agentType, configPath: '' }));
+        } else {
+          warn('No skills found to sync');
+          console.log(colors.muted('Install skills with: skillkit install <source>'));
+        }
         return 0;
       }
 
-      // Show skills to sync
-      if (!this.quiet) {
+      if (!this.quiet && !this.json) {
         console.log('');
         console.log(colors.bold(`Syncing ${skills.length} skill(s) for ${adapter.name}:`));
         console.log('');
@@ -127,8 +135,7 @@ export class SyncCommand extends Command {
         console.log('');
       }
 
-      // Confirm sync
-      if (isInteractive && !this.yes) {
+      if (isInteractive && !this.yes && !this.json) {
         const confirmResult = await confirm({
           message: `Sync ${skills.length} skill(s) to ${outputPath}?`,
           initialValue: true,
@@ -166,21 +173,28 @@ export class SyncCommand extends Command {
 
       s.stop('Config generated');
 
-      // Show summary
-      showSyncSummary({
-        skillCount: skills.length,
-        agentType,
-        configPath: outputPath,
-      });
+      if (this.json) {
+        console.log(JSON.stringify({ success: true, skills: skills.length, agent: agentType, configPath: outputPath }));
+      } else {
+        showSyncSummary({
+          skillCount: skills.length,
+          agentType,
+          configPath: outputPath,
+        });
 
-      if (!this.quiet) {
-        outro('Sync complete!');
+        if (!this.quiet) {
+          outro('Sync complete!');
+        }
       }
 
       return 0;
     } catch (err) {
-      console.log(colors.error('Sync failed'));
-      console.log(colors.muted(err instanceof Error ? err.message : String(err)));
+      if (this.json) {
+        console.log(JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }));
+      } else {
+        console.log(colors.error('Sync failed'));
+        console.log(colors.muted(err instanceof Error ? err.message : String(err)));
+      }
       return 1;
     }
   }
@@ -199,6 +213,10 @@ function updateConfigContent(existing: string, newConfig: string, agentType: Age
     universal: {
       start: '<!-- SKILLKIT_SKILLS_START -->',
       end: '<!-- SKILLKIT_SKILLS_END -->',
+    },
+    hermes: {
+      start: '<!-- SKILLS_TABLE_START -->',
+      end: '<!-- SKILLS_TABLE_END -->',
     },
   };
 

@@ -1,11 +1,49 @@
 # SkillKit
 
-Universal skills manager for AI coding agents. Install, manage, and sync skills across 32 AI agents including Claude Code, Cursor, Codex, Gemini CLI, and more.
+Universal skills manager for AI coding agents. Install, manage, and sync skills across 46 AI agents including Claude Code, Cursor, Codex, Gemini CLI, and more.
 
 ## Installation
 
 ```bash
+# Full install (default) — every feature, everything works:
 npm install -g skillkit
+
+# Slim install — core commands only, ~75% smaller, no native addons:
+npm install -g skillkit --omit=optional
+```
+
+### What's optional
+
+Four power features ship as **optional dependencies** so the core CLI
+stays lean. They install automatically with `npm install -g skillkit`,
+and are skipped with `--omit=optional`:
+
+| Feature                  | Package              | Command                        |
+| ------------------------ | -------------------- | ------------------------------ |
+| Interactive terminal UI  | `@skillkit/tui`      | `skillkit ui` / `skillkit tui` |
+| REST/OpenAPI server      | `@skillkit/api`      | `skillkit serve`               |
+| Peer mesh networking     | `@skillkit/mesh`     | `skillkit mesh …`              |
+| Inter-agent messaging    | `@skillkit/messaging`| `skillkit message …`           |
+
+Add one later with `npm install -g @skillkit/tui` (or `api` / `mesh` / `messaging`).
+
+### Using `npx`
+
+`npx skillkit add <owner/repo>` works with zero install. First run pulls
+the package into the npx cache (`~/.npm/_npx/`); every subsequent run
+from the same cache is instant.
+
+```bash
+npx skillkit add anthropics/skills                    # full
+npx --omit=optional skillkit add anthropics/skills    # slim, 118 pkgs, 9 s
+```
+
+Running `npx` more than a couple of times? Install globally — no
+prompt-to-proceed, no refetch on each release:
+
+```bash
+npm install -g skillkit --omit=optional
+skillkit add anthropics/skills
 ```
 
 ## Quick Start
@@ -150,11 +188,11 @@ skillkit memory compress
 skillkit memory export auth-insight --output auth-skill.md
 ```
 
-## Supported Agents (32)
+## Supported Agents (46)
 
-**Primary (17):** Claude Code, Cursor, Codex, Gemini CLI, Windsurf, GitHub Copilot, OpenCode, Antigravity, Amp, Clawdbot, Droid, Goose, Kilo, Kiro, Roo, Trae, Universal
+**Primary (19):** Claude Code, Cursor, Codex, Gemini CLI, Windsurf, GitHub Copilot, OpenCode, Antigravity, Amp, Clawdbot, OpenClaw, Droid, Goose, Hermes Agent, Kilo, Kiro, Roo, Trae, Universal
 
-**Extended (15):** Cline, CodeBuddy, CommandCode, Continue, Crush, Factory, MCPJam, Mux, Neovate, OpenHands, Pi, Qoder, Qwen, Vercel, Zencoder
+**Extended (27):** Aider, Amazon Q, Augment Code, Bolt, Cline, CodeBuddy, CodeGPT, CommandCode, Continue, Crush, Devin, Factory, Lovable, MCPJam, Mux, Neovate, OpenHands, Pi, PlayCode Agent, Qoder, Qwen, Replit Agent, Sourcegraph Cody, Tabby, Tabnine, Vercel, Zencoder
 
 ## Usage Examples
 

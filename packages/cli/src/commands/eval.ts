@@ -12,6 +12,7 @@ import {
   CommunitySignalsEvaluator,
 } from '@skillkit/core';
 import type { EvalTier, EvalOptions } from '@skillkit/core';
+import { spinner } from '../onboarding/index.js';
 
 export class EvalCommand extends Command {
   static override paths = [['eval']];
@@ -74,6 +75,10 @@ export class EvalCommand extends Command {
     description: 'Timeout in seconds for each tier',
   });
 
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
+
   async execute(): Promise<number> {
     const targetPath = resolve(this.skillPath);
 
@@ -132,14 +137,30 @@ export class EvalCommand extends Command {
     engine.registerEvaluator(new DynamicBenchmarkEvaluator());
     engine.registerEvaluator(new CommunitySignalsEvaluator());
 
-    const result = await engine.evaluate(targetPath, options);
+    const isJson = this.json || this.format === 'json';
+    const s = isJson ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
+    s.start('Evaluating skill...');
+    let result;
+    try {
+      result = await engine.evaluate(targetPath, options);
+      s.stop(`Evaluation complete (score: ${result.overallScore})`);
+    } catch (err) {
+      s.stop('Evaluation failed');
+      throw err;
+    }
 
-    this.context.stdout.write(formatEvalResult(result, this.format) + '\n');
+    if (this.json) {
+      console.log(JSON.stringify(result));
+    } else {
+      this.context.stdout.write(formatEvalResult(result, this.format) + '\n');
+    }
 
     if (this.minScore) {
       const threshold = parseInt(this.minScore, 10);
       if (result.overallScore < threshold) {
-        this.context.stderr.write(`Score ${result.overallScore} is below minimum ${threshold}\n`);
+        if (!this.json) {
+          this.context.stderr.write(`Score ${result.overallScore} is below minimum ${threshold}\n`);
+        }
         return 1;
       }
     }

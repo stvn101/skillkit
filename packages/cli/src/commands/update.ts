@@ -1,10 +1,9 @@
 import { existsSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
-import chalk from 'chalk';
-import ora from 'ora';
 import { Command, Option } from 'clipanion';
-import { findAllSkills, findSkill, detectProvider, isLocalPath } from '@skillkit/core';
-import { getSearchDirs, loadSkillMetadata, saveSkillMetadata } from '../helpers.js';
+import { findAllSkills, findSkill, detectProvider, isLocalPath, computeSkillChecksum, addSkillToLock } from '@skillkit/core';
+import { getSearchDirs, loadSkillMetadata, saveSkillMetadata, fetchGitHubActivity } from '../helpers.js';
+import { colors, spinner, warn, step } from '../onboarding/index.js';
 
 export class UpdateCommand extends Command {
   static override paths = [['update'], ['u']];
@@ -24,8 +23,12 @@ export class UpdateCommand extends Command {
     description: 'Force update even if local changes exist',
   });
 
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
+
   async execute(): Promise<number> {
-    const spinner = ora();
+    const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
     const searchDirs = getSearchDirs();
 
     let skillsToUpdate;
@@ -36,19 +39,23 @@ export class UpdateCommand extends Command {
         .filter((s): s is NonNullable<typeof s> => s !== null);
 
       const notFound = this.skills.filter(name => !findSkill(name, searchDirs));
-      if (notFound.length > 0) {
-        console.log(chalk.yellow(`Skills not found: ${notFound.join(', ')}`));
+      if (notFound.length > 0 && !this.json) {
+        warn(`Skills not found: ${notFound.join(', ')}`);
       }
     } else {
       skillsToUpdate = findAllSkills(searchDirs);
     }
 
     if (skillsToUpdate.length === 0) {
-      console.log(chalk.yellow('No skills to update'));
+      if (this.json) {
+        console.log(JSON.stringify({ updated: 0, skipped: 0, failed: 0 }));
+      } else {
+        warn('No skills to update');
+      }
       return 0;
     }
 
-    console.log(chalk.cyan(`Updating ${skillsToUpdate.length} skill(s)...\n`));
+    if (!this.json) step(`Updating ${skillsToUpdate.length} skill(s)...`);
 
     let updated = 0;
     let skipped = 0;
@@ -58,12 +65,12 @@ export class UpdateCommand extends Command {
       const metadata = loadSkillMetadata(skill.path);
 
       if (!metadata) {
-        console.log(chalk.dim(`Skipping ${skill.name} (no metadata, reinstall needed)`));
+        if (!this.json) console.log(colors.muted(`Skipping ${skill.name} (no metadata, reinstall needed)`));
         skipped++;
         continue;
       }
 
-      spinner.start(`Updating ${skill.name}...`);
+      s.start(`Updating ${skill.name}...`);
 
       try {
         if (isLocalPath(metadata.source)) {
@@ -72,14 +79,14 @@ export class UpdateCommand extends Command {
             : metadata.source;
 
           if (!existsSync(localPath)) {
-            spinner.warn(chalk.yellow(`${skill.name}: local source missing`));
+            s.stop(colors.warning(`${skill.name}: local source missing`));
             skipped++;
             continue;
           }
 
           const skillMdPath = join(localPath, 'SKILL.md');
           if (!existsSync(skillMdPath)) {
-            spinner.warn(chalk.yellow(`${skill.name}: no SKILL.md at source`));
+            s.stop(colors.warning(`${skill.name}: no SKILL.md at source`));
             skipped++;
             continue;
           }
@@ -87,24 +94,45 @@ export class UpdateCommand extends Command {
           rmSync(skill.path, { recursive: true, force: true });
           cpSync(localPath, skill.path, { recursive: true, dereference: true });
 
+          metadata.checksum = computeSkillChecksum(skill.path);
           metadata.updatedAt = new Date().toISOString();
           saveSkillMetadata(skill.path, metadata);
+          addSkillToLock(skill.name, {
+            source: metadata.source,
+            sourceType: metadata.sourceType,
+            installedAt: metadata.installedAt,
+            updatedAt: metadata.updatedAt,
+            checksum: metadata.checksum,
+            agents: [],
+            path: skill.path,
+          });
 
-          spinner.succeed(chalk.green(`Updated ${skill.name}`));
+          s.stop(`Updated ${skill.name}`);
           updated++;
         } else {
           const provider = detectProvider(metadata.source);
 
           if (!provider) {
-            spinner.warn(chalk.yellow(`${skill.name}: unknown provider`));
+            s.stop(colors.warning(`${skill.name}: unknown provider`));
             skipped++;
             continue;
+          }
+
+          const parsed = provider.parseSource?.(metadata.source);
+          if (!this.force && parsed && 'owner' in parsed && 'repo' in parsed && (provider.type === 'github' || provider.type === 'skills-sh')) {
+            const activity = await fetchGitHubActivity(parsed.owner, parsed.repo);
+            const localDate = metadata.updatedAt ?? metadata.installedAt;
+            if (activity?.pushedAt && localDate && activity.pushedAt <= localDate) {
+              s.stop(`${skill.name}: no changes detected`);
+              skipped++;
+              continue;
+            }
           }
 
           const result = await provider.clone(metadata.source, '', { depth: 1 });
 
           if (!result.success || !result.path) {
-            spinner.fail(chalk.red(`${skill.name}: ${result.error || 'clone failed'}`));
+            s.stop(colors.error(`${skill.name}: ${result.error || 'clone failed'}`));
             failed++;
             continue;
           }
@@ -115,7 +143,15 @@ export class UpdateCommand extends Command {
 
           const skillMdPath = join(sourcePath, 'SKILL.md');
           if (!existsSync(skillMdPath)) {
-            spinner.warn(chalk.yellow(`${skill.name}: no SKILL.md in source`));
+            s.stop(colors.warning(`${skill.name}: no SKILL.md in source`));
+            rmSync(result.path, { recursive: true, force: true });
+            skipped++;
+            continue;
+          }
+
+          const newChecksum = computeSkillChecksum(sourcePath);
+          if (!this.force && newChecksum && metadata.checksum && newChecksum === metadata.checksum) {
+            s.stop(`${skill.name}: already up to date`);
             rmSync(result.path, { recursive: true, force: true });
             skipped++;
             continue;
@@ -126,25 +162,36 @@ export class UpdateCommand extends Command {
 
           rmSync(result.path, { recursive: true, force: true });
 
+          metadata.checksum = computeSkillChecksum(skill.path);
           metadata.updatedAt = new Date().toISOString();
           saveSkillMetadata(skill.path, metadata);
+          addSkillToLock(skill.name, {
+            source: metadata.source,
+            sourceType: metadata.sourceType,
+            installedAt: metadata.installedAt,
+            updatedAt: metadata.updatedAt,
+            checksum: metadata.checksum,
+            agents: [],
+            path: skill.path,
+          });
 
-          spinner.succeed(chalk.green(`Updated ${skill.name}`));
+          s.stop(`Updated ${skill.name}`);
           updated++;
         }
-      } catch (error) {
-        spinner.fail(chalk.red(`Failed to update ${skill.name}`));
-        console.error(chalk.dim(error instanceof Error ? error.message : String(error)));
+      } catch (err) {
+        s.stop(colors.error(`Failed to update ${skill.name}`));
+        if (!this.json) console.log(colors.muted(err instanceof Error ? err.message : String(err)));
         failed++;
       }
     }
 
+    if (this.json) {
+      console.log(JSON.stringify({ updated, skipped, failed }));
+      return failed > 0 ? 1 : 0;
+    }
+
     console.log();
-    console.log(
-      chalk.cyan(
-        `Updated: ${updated}, Skipped: ${skipped}, Failed: ${failed}`
-      )
-    );
+    step(`Updated: ${updated}, Skipped: ${skipped}, Failed: ${failed}`);
 
     return failed > 0 ? 1 : 0;
   }

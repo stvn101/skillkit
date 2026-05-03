@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, basename, resolve, sep } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, basename, dirname, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { SkillFrontmatter, SkillMetadata, type Skill, type SkillLocation } from './types.js';
 
@@ -11,33 +11,47 @@ export const SKILL_DISCOVERY_PATHS = [
   'agents',
   '.agents/skills',
   '.agent/skills',
+  '.aider/skills',
+  '.amazonq/skills',
   '.amp/skills',
   '.antigravity/skills',
+  '.augment/skills',
+  '.bolt/skills',
   '.claude/skills',
   '.cline/skills',
   '.clawdbot/skills',
   '.codebuddy/skills',
+  '.codegpt/skills',
   '.codex/skills',
+  '.cody/skills',
   '.commandcode/skills',
   '.continue/skills',
   '.copilot/skills',
   '.crush/skills',
   '.cursor/skills',
+  '.devin/skills',
   '.factory/skills',
   '.gemini/skills',
   '.github/skills',
   '.goose/skills',
+  '.hermes/skills',
   '.kilocode/skills',
   '.kiro/skills',
+  '.lovable/skills',
   '.mcpjam/skills',
   '.mux/skills',
   '.neovate/skills',
   '.opencode/skills',
+  '.openclaw/skills',
   '.openhands/skills',
   '.pi/skills',
+  '.playcode/skills',
   '.qoder/skills',
   '.qwen/skills',
+  '.replit/skills',
   '.roo/skills',
+  '.tabby/skills',
+  '.tabnine/skills',
   '.trae/skills',
   '.vercel/skills',
   '.windsurf/skills',
@@ -274,7 +288,10 @@ export function extractField(content: string, field: string): string | null {
 }
 
 export function loadMetadata(skillPath: string): SkillMetadata | null {
-  const metadataPath = join(skillPath, '.skillkit.json');
+  const isFile = skillPath.endsWith('.md') && existsSync(skillPath) && statSync(skillPath).isFile();
+  const metadataPath = isFile
+    ? join(dirname(skillPath), `.${basename(skillPath, '.md')}.skillkit.json`)
+    : join(skillPath, '.skillkit.json');
 
   if (!existsSync(metadataPath)) {
     return null;
@@ -311,10 +328,17 @@ export function findSkill(name: string, searchDirs: string[]): Skill | null {
   for (const dir of searchDirs) {
     if (!existsSync(dir)) continue;
 
+    const location: SkillLocation = isPathInside(dir, process.cwd()) ? 'project' : 'global';
+
     const skillPath = join(dir, name);
     if (existsSync(skillPath)) {
-      const location: SkillLocation = dir.includes(process.cwd()) ? 'project' : 'global';
-      return parseSkill(skillPath, location);
+      const skill = parseSkill(skillPath, location);
+      if (skill) return skill;
+    }
+
+    const mdPath = join(dir, name.endsWith('.md') ? name : `${name}.md`);
+    if (existsSync(mdPath)) {
+      return parseStandaloneSkill(mdPath, location);
     }
   }
 
@@ -328,7 +352,7 @@ export function findAllSkills(searchDirs: string[]): Skill[] {
   for (const dir of searchDirs) {
     if (!existsSync(dir)) continue;
 
-    const location: SkillLocation = dir.includes(process.cwd()) ? 'project' : 'global';
+    const location: SkillLocation = isPathInside(dir, process.cwd()) ? 'project' : 'global';
     const discovered = discoverSkills(dir);
 
     for (const skill of discovered) {

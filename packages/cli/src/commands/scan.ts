@@ -2,6 +2,7 @@ import { Command, Option } from 'clipanion';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { SkillScanner, formatResult, Severity } from '@skillkit/core';
+import { error, spinner } from '../onboarding/index.js';
 
 const SEVERITY_MAP: Record<string, Severity> = {
   critical: Severity.CRITICAL,
@@ -46,17 +47,21 @@ export class ScanCommand extends Command {
     description: 'Comma-separated rule IDs or categories to skip',
   });
 
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
+
   async execute(): Promise<number> {
     const targetPath = resolve(this.skillPath);
 
     if (!existsSync(targetPath)) {
-      this.context.stderr.write(`Path not found: ${targetPath}\n`);
+      error(`Path not found: ${targetPath}`);
       return 1;
     }
 
     const validFormats = ['summary', 'json', 'table', 'sarif'];
     if (!validFormats.includes(this.format)) {
-      this.context.stderr.write(`Invalid format: "${this.format}". Must be one of: ${validFormats.join(', ')}\n`);
+      error(`Invalid format: "${this.format}". Must be one of: ${validFormats.join(', ')}`);
       return 1;
     }
 
@@ -66,7 +71,7 @@ export class ScanCommand extends Command {
     if (this.failOn) {
       failOnSeverity = SEVERITY_MAP[this.failOn.toLowerCase()];
       if (!failOnSeverity) {
-        this.context.stderr.write(`Invalid --fail-on value: "${this.failOn}". Must be one of: ${Object.keys(SEVERITY_MAP).join(', ')}\n`);
+        error(`Invalid --fail-on value: "${this.failOn}". Must be one of: ${Object.keys(SEVERITY_MAP).join(', ')}`);
         return 1;
       }
     }
@@ -76,7 +81,21 @@ export class ScanCommand extends Command {
       skipRules,
     });
 
-    const result = await scanner.scan(targetPath);
+    const s = this.json ? { start: () => {}, stop: () => {} } : spinner();
+    s.start('Scanning for vulnerabilities...');
+    let result;
+    try {
+      result = await scanner.scan(targetPath);
+      s.stop(`Scan complete (${result.findings.length} finding(s))`);
+    } catch (err) {
+      s.stop('Scan failed');
+      throw err;
+    }
+
+    if (this.json) {
+      this.context.stdout.write(formatResult(result, 'json') + '\n');
+      return result.verdict === 'fail' ? 1 : 0;
+    }
 
     this.context.stdout.write(formatResult(result, this.format) + '\n');
 

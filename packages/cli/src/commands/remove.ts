@@ -1,8 +1,8 @@
 import { existsSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import chalk from 'chalk';
+import { join, dirname, basename } from 'node:path';
+import { colors, warn, success, error, spinner } from '../onboarding/index.js';
 import { Command, Option } from 'clipanion';
-import { findSkill, AgentsMdParser, AgentsMdGenerator } from '@skillkit/core';
+import { findSkill, findAllSkills, loadMetadata, AgentsMdParser, AgentsMdGenerator, removeSkillFromLock } from '@skillkit/core';
 import { getSearchDirs } from '../helpers.js';
 
 export class RemoveCommand extends Command {
@@ -13,44 +13,112 @@ export class RemoveCommand extends Command {
     examples: [
       ['Remove a skill', '$0 remove pdf'],
       ['Remove multiple skills', '$0 remove pdf xlsx docx'],
-      ['Force removal without confirmation', '$0 remove pdf --force'],
+      ['Remove all skills from a source', '$0 remove --source iii-hq/iii'],
+      ['Remove all installed skills', '$0 remove --all'],
+      ['Force removal without confirmation', '$0 remove --all --force'],
     ],
   });
 
-  skills = Option.Rest({ required: 1 });
+  skills = Option.Rest({ required: 0 });
+
+  all = Option.Boolean('--all,-a', false, {
+    description: 'Remove all installed skills',
+  });
+
+  source = Option.String('--source,-s', {
+    description: 'Remove all skills installed from this source (e.g. iii-hq/iii)',
+  });
 
   force = Option.Boolean('--force,-f', false, {
     description: 'Skip confirmation',
   });
 
+  json = Option.Boolean('--json', false, {
+    description: 'Output as JSON',
+  });
+
   async execute(): Promise<number> {
     const searchDirs = getSearchDirs();
+
+    if (!this.all && !this.source && this.skills.length === 0) {
+      error('Provide skill names, --source, or --all');
+      return 1;
+    }
+
+    let skillsToRemove: Array<{ name: string; path: string }> = [];
+
+    if (this.all || this.source) {
+      const allSkills = findAllSkills(searchDirs);
+      if (this.source) {
+        skillsToRemove = allSkills.filter((s) => {
+          const meta = loadMetadata(s.path);
+          return meta?.source?.includes(this.source!) ?? false;
+        }).map((s) => ({ name: s.name, path: s.path }));
+        if (skillsToRemove.length === 0) {
+          if (this.json) {
+            console.log(JSON.stringify({ success: true, removed: [], failed: [], total: 0 }));
+          } else {
+            warn(`No skills found from source: ${this.source}`);
+          }
+          return 0;
+        }
+      } else {
+        skillsToRemove = allSkills.map((s) => ({ name: s.name, path: s.path }));
+        if (skillsToRemove.length === 0) {
+          if (this.json) {
+            console.log(JSON.stringify({ success: true, removed: [], failed: [], total: 0 }));
+          } else {
+            warn('No installed skills found');
+          }
+          return 0;
+        }
+      }
+      if (!this.json) console.log(colors.muted(`Found ${skillsToRemove.length} skill(s) to remove`));
+    } else {
+      for (const skillName of this.skills) {
+        const skill = findSkill(skillName, searchDirs);
+        if (!skill) {
+          if (!this.json) warn(`Skill not found: ${skillName}`);
+          continue;
+        }
+        skillsToRemove.push({ name: skill.name, path: skill.path });
+      }
+    }
+
     let removed = 0;
     let failed = 0;
+    const removedNames: string[] = [];
+    const failedNames: string[] = [];
+    const s = this.json ? { start: () => {}, stop: () => {}, message: () => {} } : spinner();
+    s.start('Removing skills');
 
-    for (const skillName of this.skills) {
-      const skill = findSkill(skillName, searchDirs);
-
-      if (!skill) {
-        console.log(chalk.yellow(`Skill not found: ${skillName}`));
-        continue;
-      }
-
-      if (!existsSync(skill.path)) {
-        console.log(chalk.yellow(`Path not found: ${skill.path}`));
+    for (const { name: skillName, path: skillPath } of skillsToRemove) {
+      if (!existsSync(skillPath)) {
+        warn(`Path not found: ${skillPath}`);
         continue;
       }
 
       try {
-        rmSync(skill.path, { recursive: true, force: true });
-        console.log(chalk.green(`Removed: ${skillName}`));
+        rmSync(skillPath, { recursive: true, force: true });
+        if (skillPath.endsWith('.md')) {
+          const metaSibling = join(dirname(skillPath), `.${basename(skillPath, '.md')}.skillkit.json`);
+          if (existsSync(metaSibling)) rmSync(metaSibling);
+        }
+        removeSkillFromLock(skillName);
+        removedNames.push(skillName);
+        if (!this.json) success(`Removed: ${skillName}`);
         removed++;
-      } catch (error) {
-        console.log(chalk.red(`Failed to remove: ${skillName}`));
-        console.error(chalk.dim(error instanceof Error ? error.message : String(error)));
+      } catch (err) {
+        failedNames.push(skillName);
+        if (!this.json) {
+          error(`Failed to remove: ${skillName}`);
+          console.error(colors.muted(err instanceof Error ? err.message : String(err)));
+        }
         failed++;
       }
     }
+
+    s.stop(`Removed ${removed} skill(s)`);
 
     if (removed > 0) {
       try {
@@ -65,11 +133,23 @@ export class RemoveCommand extends Command {
             writeFileSync(agentsMdPath, updated, 'utf-8');
           }
         }
-      } catch (error) {
-        console.log(chalk.yellow('Warning: Failed to update AGENTS.md'));
-        console.error(chalk.dim(error instanceof Error ? error.message : String(error)));
+      } catch (err) {
+        warn('Warning: Failed to update AGENTS.md');
+        console.error(colors.muted(err instanceof Error ? err.message : String(err)));
       }
-      console.log(chalk.dim('\nRun `skillkit sync` to update your agent config'));
+      if (!this.json) {
+        console.log(colors.muted('\nRun `skillkit sync` to update your agent config'));
+      }
+    }
+
+    if (this.json) {
+      console.log(JSON.stringify({
+        success: failed === 0,
+        removed: removedNames,
+        failed: failedNames,
+        total: removed + failed,
+      }));
+      return failed > 0 ? 1 : 0;
     }
 
     return failed > 0 ? 1 : 0;
