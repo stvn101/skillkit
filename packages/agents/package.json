@@ -22,13 +22,13 @@
   },
   "dependencies": {
     "@skillkit/core": "workspace:*",
-    "minimatch": "^9.0.0"
+    "minimatch": "^9.0.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=18.0.0"
