@@ -70,7 +70,7 @@
     "@types/turndown": "^5.0.6",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=18.0.0"
