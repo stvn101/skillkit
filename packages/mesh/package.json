@@ -28,14 +28,14 @@
     "@noble/ciphers": "^1.0.0",
     "@noble/hashes": "^1.5.0",
     "jose": "^5.8.0",
-    "ws": "^8.16.0",
+    "ws": "^8.21.0",
     "got": "^14.2.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.0"
+    "vitest": "^3.2.6"
   },
   "engines": {
     "node": ">=18"
